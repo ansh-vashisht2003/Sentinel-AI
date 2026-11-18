@@ -1,0 +1,20 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# Environment variables (Keep secrets out of GitHub!)
+.env
+
+# Local SQLite databases (if you don't want to track chat history/data locally)
+*.db
+
+# Large model files if you want to keep them local (uncomment if needed)
+backend/models/*.joblib
+backend/models/*.json
