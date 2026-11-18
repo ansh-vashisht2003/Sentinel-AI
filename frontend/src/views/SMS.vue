@@ -1,20 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, computed } from 'vue'
 
-type InputMode = 'text' | 'screenshot'
-
-const mode = ref<InputMode>('text')
 const message = ref('')
-const selectedFile = ref<File | null>(null)
 const mobile_number = ref('')
 const country_code = ref('+91')
-const previewUrl = ref('')
-const extractedText = ref('')
-const isExtracting = ref(false)
 const isAnalyzing = ref(false)
 const error = ref('')
 const result = ref<any>(null)
-const fileInput = ref<HTMLInputElement | null>(null)
 
 const canAnalyze = computed(() => {
   return message.value.trim().length > 0 && !isAnalyzing.value
@@ -25,103 +17,9 @@ function clearResult() {
   error.value = ''
 }
 
-function changeMode(newMode: InputMode) {
-  mode.value = newMode
-  error.value = ''
-  result.value = null
-}
-
-function selectFile(file?: File) {
-  if (!file) return
-
-  error.value = ''
-  result.value = null
-  extractedText.value = ''
-
-  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-    error.value = 'Please upload a PNG, JPG or WEBP image.'
-    return
-  }
-
-  if (file.size > 10 * 1024 * 1024) {
-    error.value = 'Image size must be less than 10 MB.'
-    return
-  }
-
-  if (previewUrl.value) {
-    URL.revokeObjectURL(previewUrl.value)
-  }
-
-  selectedFile.value = file
-  previewUrl.value = URL.createObjectURL(file)
-}
-
-function handleFileChange(event: Event) {
-  const target = event.target as HTMLInputElement
-  selectFile(target.files?.[0])
-}
-
-function handleDrop(event: DragEvent) {
-  selectFile(event.dataTransfer?.files?.[0])
-}
-
-function removeImage() {
-  if (previewUrl.value) {
-    URL.revokeObjectURL(previewUrl.value)
-  }
-
-  previewUrl.value = ''
-  selectedFile.value = null
-  extractedText.value = ''
-
-  if (fileInput.value) {
-    fileInput.value.value = ''
-  }
-}
-
-async function extractText() {
-  if (!selectedFile.value) return
-
-  isExtracting.value = true
-  error.value = ''
-
-  try {
-    const formData = new FormData()
-    formData.append('file', selectedFile.value)
-
-    // Reuses the existing OCR endpoint because screenshot text extraction
-    // is channel-independent. Change this only if you create /api/sms/extract.
-    const response = await fetch(
-      'http://localhost:8000/api/whatsapp/extract',
-      {
-        method: 'POST',
-        body: formData,
-      }
-    )
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Unable to extract text from screenshot.')
-    }
-
-    extractedText.value = data.extracted_text || ''
-    message.value = extractedText.value
-
-    if (!extractedText.value) {
-      error.value = 'No readable text was found. Try another screenshot.'
-    }
-  } catch (err) {
-    error.value =
-      err instanceof Error ? err.message : 'OCR extraction failed.'
-  } finally {
-    isExtracting.value = false
-  }
-}
-
 async function analyzeMessage() {
   if (!message.value.trim()) {
-    error.value = 'Please enter or extract an SMS message.'
+    error.value = 'Please enter an SMS message.'
     return
   }
 
@@ -130,46 +28,31 @@ async function analyzeMessage() {
   result.value = null
 
   try {
-    const response = await fetch(
-      'http://localhost:8000/api/sms/analyze',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: message.value.trim(),
-          mobile_number: mobile_number.value.trim(),
-          country_code: country_code.value,
-          source: 'sms',
-        }),
-      }
-    )
+    const response = await fetch('http://localhost:8000/api/sms/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: message.value.trim(),
+        mobile_number: mobile_number.value.trim(),
+        country_code: country_code.value,
+        source: 'sms',
+      }),
+    })
 
     const data = await response.json()
-
     if (!response.ok || data.success === false) {
       throw new Error(data.error || 'SMS analysis failed.')
     }
 
-    // Supports either the same flattened response as WhatsApp
-    // or an API response wrapped as { success: true, report: {...} }.
     result.value = data.report ?? data
   } catch (err) {
-    error.value =
-      err instanceof Error
-        ? err.message
-        : 'Unable to connect to the Python backend.'
+    error.value = err instanceof Error
+      ? err.message
+      : 'Unable to connect to the Python backend.'
   } finally {
     isAnalyzing.value = false
   }
 }
-
-onBeforeUnmount(() => {
-  if (previewUrl.value) {
-    URL.revokeObjectURL(previewUrl.value)
-  }
-})
 </script>
 
 <template>
@@ -210,7 +93,7 @@ onBeforeUnmount(() => {
                 SMS Investigation
               </h2>
               <p class="mt-1 text-xs text-slate-400">
-                Enter the sender details and choose how you want to provide the SMS.
+                Enter the sender details and paste the SMS message you want to investigate.
               </p>
             </div>
 
@@ -252,65 +135,8 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- Input Mode Selector -->
-            <div class="mb-6 grid grid-cols-2 gap-3">
-
-              <button
-                @click="changeMode('text')"
-                class="flex items-center gap-3 rounded-xl border p-4 text-left transition"
-                :class="mode === 'text'
-                  ? 'border-cyan-400 bg-cyan-400/10'
-                  : 'border-slate-700 bg-[#0b1625] hover:border-slate-500'"
-              >
-                <div class="rounded-lg bg-cyan-400/10 p-2">
-                  <svg class="h-6 w-6 text-cyan-400" fill="none"
-                    stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                      stroke-width="1.8"
-                      d="M8 10h8M8 14h5m-8 6l-2 1v-4a8 8 0 1116 0v3a2 2 0 01-2 2H5z"/>
-                  </svg>
-                </div>
-
-                <div>
-                  <p class="text-sm font-semibold text-white">
-                    Paste SMS
-                  </p>
-                  <p class="mt-1 text-xs text-slate-400">
-                    Manual text input
-                  </p>
-                </div>
-              </button>
-
-              <button
-                @click="changeMode('screenshot')"
-                class="flex items-center gap-3 rounded-xl border p-4 text-left transition"
-                :class="mode === 'screenshot'
-                  ? 'border-cyan-400 bg-cyan-400/10'
-                  : 'border-slate-700 bg-[#0b1625] hover:border-slate-500'"
-              >
-                <div class="rounded-lg bg-cyan-400/10 p-2">
-                  <svg class="h-6 w-6 text-cyan-400" fill="none"
-                    stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                      stroke-width="1.8"
-                      d="M3 7a2 2 0 012-2h3l2-2h4l2 2h3a2 2 0 012 2v11a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
-                </div>
-
-                <div>
-                  <p class="text-sm font-semibold text-white">
-                    Upload Screenshot
-                  </p>
-                  <p class="mt-1 text-xs text-slate-400">
-                    OCR text extraction
-                  </p>
-                </div>
-              </button>
-            </div>
-
-            <!-- Text Input -->
-            <div v-if="mode === 'text'" class="space-y-3">
+            <!-- SMS Message Input -->
+            <div class="space-y-3">
               <label class="text-sm font-medium text-slate-300">
                 SMS Message Content
               </label>
@@ -327,112 +153,6 @@ onBeforeUnmount(() => {
               <div class="flex justify-between text-xs text-slate-500">
                 <span>Enter the complete SMS for better analysis.</span>
                 <span>{{ message.length }}/10000</span>
-              </div>
-            </div>
-
-            <!-- Screenshot Input -->
-            <div v-else class="space-y-4">
-              <label class="text-sm font-medium text-slate-300">
-                Upload SMS Screenshot
-              </label>
-
-              <div
-                @dragover.prevent
-                @drop.prevent="handleDrop"
-                @click="!selectedFile && fileInput?.click()"
-                class="cursor-pointer rounded-xl border-2 border-dashed border-slate-700 bg-[#091422] p-8 text-center transition hover:border-cyan-400/60 hover:bg-cyan-400/5"
-              >
-                <input
-                  ref="fileInput"
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
-                  class="hidden"
-                  @change="handleFileChange"
-                />
-
-                <div v-if="!selectedFile">
-                  <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-400/10">
-                    <svg class="h-7 w-7 text-cyan-400" fill="none"
-                      stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round"
-                        stroke-width="1.8"
-                        d="M12 16V4m0 0L7 9m5-5l5 5M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/>
-                    </svg>
-                  </div>
-
-                  <p class="font-semibold text-white">
-                    Click to upload or drag and drop
-                  </p>
-
-                  <p class="mt-2 text-xs text-slate-500">
-                    PNG, JPG or WEBP · Maximum 10 MB
-                  </p>
-                </div>
-
-                <div v-else class="space-y-3">
-                  <img
-                    :src="previewUrl"
-                    alt="SMS screenshot preview"
-                    class="mx-auto max-h-72 rounded-lg border border-slate-700 object-contain"
-                  />
-
-                  <p class="text-sm font-medium text-white">
-                    {{ selectedFile.name }}
-                  </p>
-
-                  <p class="text-xs text-slate-400">
-                    {{ (selectedFile.size / 1024 / 1024).toFixed(2) }} MB
-                  </p>
-
-                  <button
-                    @click.stop="removeImage"
-                    class="text-xs font-semibold text-rose-400 hover:text-rose-300"
-                  >
-                    Remove screenshot
-                  </button>
-                </div>
-              </div>
-
-              <button
-                v-if="selectedFile"
-                @click="extractText"
-                :disabled="isExtracting"
-                class="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-400/10 py-3 text-sm font-semibold text-cyan-400 transition hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <svg v-if="isExtracting" class="h-5 w-5 animate-spin"
-                  fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10"
-                    stroke="currentColor" stroke-width="4"/>
-                  <path class="opacity-75" fill="currentColor"
-                    d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
-                </svg>
-
-                {{ isExtracting ? 'Extracting Text...' : 'Extract Text Using OCR' }}
-              </button>
-
-              <!-- OCR Result -->
-              <div v-if="extractedText" class="space-y-3">
-                <div class="flex items-center justify-between">
-                  <label class="text-sm font-semibold text-white">
-                    Extracted Text
-                  </label>
-
-                  <span class="rounded-full bg-emerald-400/10 px-3 py-1 text-xs text-emerald-400">
-                    OCR Complete
-                  </span>
-                </div>
-
-                <textarea
-                  v-model="message"
-                  @input="clearResult"
-                  rows="7"
-                  maxlength="10000"
-                  class="w-full rounded-xl border border-slate-700 bg-[#091422] p-4 text-sm leading-6 text-slate-200 outline-none focus:border-cyan-400"
-                ></textarea>
-
-                <p class="text-xs text-slate-500">
-                  Verify and correct the extracted text before analysis.
-                </p>
               </div>
             </div>
 
@@ -515,7 +235,7 @@ onBeforeUnmount(() => {
             </div>
 
             <p class="text-xs leading-6 text-slate-400">
-              SMS screenshots and sender details may contain personal information. Upload only content you are authorized to analyze. Do not use real OTPs, PINs or passwords as test data.
+              SMS messages and sender details may contain personal information. Submit only content you are authorized to analyze. Do not enter real OTPs, PINs or passwords as test data.
             </p>
           </div>
         </div>
