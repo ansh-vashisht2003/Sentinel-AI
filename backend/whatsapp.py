@@ -11,7 +11,7 @@ Important:
 - Outlier/anomaly detection means unusual compared with training data; it does not mean malicious.
 """
 from __future__ import annotations
-
+from cybersecurity import analyze_cybersecurity_message
 import os
 import re
 import json
@@ -328,7 +328,7 @@ def analyze_whatsapp_message(message: str, mobile_number: str | None = None,
 
     bundle = _load_bundle()
     ai_score, predicted_label = _probability_for_malicious(bundle, message)
-    rules = _rule_engine(message)
+    rules = analyze_cybersecurity_message(message)
     anomaly = _anomaly_score(bundle, message)
 
     # Cybersecurity score is transparent: 85% rule indicators + 15% anomaly signal.
